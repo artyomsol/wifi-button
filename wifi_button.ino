@@ -1,9 +1,9 @@
-/** 
- *  Implementation of self releasing button for WiFi controlled Relay module
- *  Intended to use with ESP8266-01 on a LC Technology Realy module http://www.lctech-inc.com
- *  
- *  Update firmware to SDK 2.0.x before upload the sketch http://www.espressif.com/en/products/hardware/esp8266ex/resources
- */
+/**
+    Implementation of self releasing button for WiFi controlled Relay module
+    Intended to use with ESP8266-01 on a LC Technology Realy module http://www.lctech-inc.com
+
+    Update firmware to SDK 2.0.x before upload the sketch http://www.espressif.com/en/products/hardware/esp8266ex/resources
+*/
 
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
 #include <DNSServer.h>
@@ -13,8 +13,9 @@
 
 boolean _debug = true;
 //#define DEBUG_ESP_HTTP_SERVER
+#define AUTO_OFF_DELAY 3000 // milliseconds until relay auto open
 
-template <typename Generic> void DEBUG(Generic text){
+template <typename Generic> void DEBUG(Generic text) {
   if (_debug) {
     Serial.print("*WB: ");
     Serial.println(text);
@@ -23,10 +24,14 @@ template <typename Generic> void DEBUG(Generic text){
 
 class LCTechRelay {
   public:
-    LCTechRelay() {forceState(RELAY_OPEN);}
+    LCTechRelay() {
+      forceState(RELAY_OPEN);
+    }
 
-    LCTechRelay(boolean state) {forceState(state);}
-    
+    LCTechRelay(boolean state) {
+      forceState(state);
+    }
+
     boolean getState() {
       return _is_open;
     }
@@ -39,16 +44,20 @@ class LCTechRelay {
       newState ? sendOpen() : sendClose();
       return true;
     }
-    
-    boolean open() {return setState(RELAY_OPEN);}
-    boolean close() {return setState(RELAY_CLOSED);}
-    
+
+    boolean open() {
+      return setState(RELAY_OPEN);
+    }
+    boolean close() {
+      return setState(RELAY_CLOSED);
+    }
+
     const boolean RELAY_OPEN = true;
     const boolean RELAY_CLOSED = false;
-  
+
   private:
     boolean _is_open = RELAY_OPEN;
-    
+
     void sendClose() {
       _is_open = RELAY_CLOSED;
       // send bytes A00101A2
@@ -61,8 +70,8 @@ class LCTechRelay {
       delay(1);
       DEBUG("Relay: close");
     }
-    
-    void sendOpen(){
+
+    void sendOpen() {
       _is_open = RELAY_OPEN;
       //send bytes A00100A1
       Serial.write(0xA0);
@@ -93,6 +102,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 std::unique_ptr<ESP8266WebServer> server;
 
 const char BUTTON_PAGE[] PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><title>Door</title><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"stylesheet\" href=\"https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css\"><script src=\"https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js\"></script></head><body style=\"margin:0;padding:6em 0 0;text-align:center;height:100%;\"><button type=\"button\" class=\"btn-primary btn-lg center-block\">Open</button><script>function g(link){$.ajax({type:'GET',url:link})};function a(e){$(e.target).text(e.data.t);g(e.data.l)};$(function(){$('button').on('mousedown',{t:'Opened',l:'/on'},a).on('mouseup',{t:'Open',l:'/off'},a)});</script></body></html>";
+unsigned long autoOffTime = 0L;
 
 void handleRoot() {
   DEBUG("Sending BUTTON_PAGE");
@@ -101,13 +111,18 @@ void handleRoot() {
   server->send(200, "text/html", page);
 };
 
-void handleOn(){
+void handleOn() {
   Relay.close();
+  autoOffTime = millis() + AUTO_OFF_DELAY;
+  if (autoOffTime == 0) {
+    autoOffTime = 1;
+  }
   handleRoot();
 };
 
-void handleOff(){
+void handleOff() {
   Relay.open();
+  autoOffTime = 0L;
   handleRoot();
 };
 
@@ -139,7 +154,7 @@ void setup() {
 
   //if you get here you have connected to the WiFi
   DEBUG(F("connected!"));
-  
+
   // setting up button page on web server
   server.reset(new ESP8266WebServer(80));
   server->on("/", handleRoot);
@@ -150,5 +165,11 @@ void setup() {
 }
 
 void loop() {
+  if (autoOffTime != 0 && (long)(millis() - autoOffTime) >= 0)
+  {
+    Relay.open();
+    autoOffTime = 0L;
+    DEBUG(F("Relay auto opened"));
+  }
   server->handleClient();
 }
