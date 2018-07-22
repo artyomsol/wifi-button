@@ -86,6 +86,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   DEBUG(myWiFiManager->getConfigPortalSSID());
   //open relay while setting up or reconfiguring WiFi settings
   Relay.open();
+  WiFi.persistent (true);
 }
 
 //server to be used to control button
